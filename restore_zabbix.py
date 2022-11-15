@@ -432,7 +432,9 @@ def restore_users(url: str, login: str, password: str):
 
                 zbx.user.create(**user)
 
-                print(f"    {user['alias']:{max_length_of_username}} -> passwd: {user_password}")
+                print(
+                    f"    {user['alias']:{max_length_of_username}} -> passwd: {user_password}"
+                )
 
             except Exception as e:
                 print(C.FAIL, e, C.ENDC)
