@@ -18,7 +18,7 @@ BASE_DIR = pathlib.Path(__file__).parent
 STATUS_OK = C.OKGREEN + "завершено" + C.ENDC
 
 
-def backup_images(url, login, password):
+def backup_images(url: str, login: str, password: str):
     """
     Копируем все имеющиеся изображения в Zabbix
 
@@ -92,14 +92,14 @@ def backup_images(url, login, password):
             updated_images_count += 1
 
     print(
-        f" Резервное копирование изображений {STATUS_OK}\n",
+        f"    Резервное копирование изображений {STATUS_OK}\n",
         f"    {C.OKGREEN}Добавлено{C.ENDC}: {new_images_count}\n",
         f"    {C.OKBLUE}Обновлено{C.ENDC}: {updated_images_count}\n",
         f"    {C.HEADER}Всего изображений{C.ENDC}: {len(existed_files) + new_images_count}",
     )
 
 
-def backup_regexp(url, login, password):
+def backup_regexp(url: str, login: str, password: str):
     """
     В таблице regexp хранится имя и id
     В таблице expressions хранятся значения regexp
@@ -122,7 +122,7 @@ def backup_regexp(url, login, password):
     ...
 
 
-def backup_global_macros(url, login, password):
+def backup_global_macros(url: str, login: str, password: str):
     """
     Копируем общесистемные макросы Zabbix
 
@@ -152,12 +152,12 @@ def backup_global_macros(url, login, password):
         json.dump(macros_list, file)
 
     print(
-        f" Резервное копирование глобальных макросов {STATUS_OK}\n",
+        f"    Резервное копирование глобальных макросов {STATUS_OK}\n",
         f"    {C.HEADER}Всего имеется{C.ENDC}: {len(macros_list)}",
     )
 
 
-def backup_host_groups(url, login, password):
+def backup_host_groups(url: str, login: str, password: str):
     """
     Копируем названия групп узлов сети
 
@@ -175,12 +175,12 @@ def backup_host_groups(url, login, password):
         json.dump(host_groups, file)
 
     print(
-        f" Резервное копирование группы узлов сети {STATUS_OK}\n",
+        f"    Резервное копирование группы узлов сети {STATUS_OK}\n",
         f"    {C.HEADER}Всего имеется{C.ENDC}: {len(host_groups)}",
     )
 
 
-def backup_templates(url, login, password):
+def backup_templates(url: str, login: str, password: str):
     """
     Копируем все имеющиеся шаблоны в Zabbix
 
@@ -203,13 +203,13 @@ def backup_templates(url, login, password):
         file.write(export_template_data)
 
     print(
-        f" Резервное копирование шаблонов {STATUS_OK}\n",
+        f"    Резервное копирование шаблонов {STATUS_OK}\n",
         f"    {C.HEADER}Всего имеется{C.ENDC}: "
         f"{len(json.loads(export_template_data)['zabbix_export']['templates'])}",
     )
 
 
-def backup_hosts(url, login, password):
+def backup_hosts(url: str, login: str, password: str):
     """
     Сохраняем все узлы сети Zabbix
 
@@ -255,7 +255,7 @@ def backup_hosts(url, login, password):
     print(f"\n Резервное копирование узлов сети {STATUS_OK}")
 
 
-def backup_maps(url, login, password):
+def backup_maps(url: str, login: str, password: str):
     print()
     print(
         C.OKBLUE,
@@ -284,9 +284,131 @@ def backup_maps(url, login, password):
             file.write(json.dumps(maps_dict))
 
     print(
-        f" Резервное копирование {STATUS_OK}\n",
+        f"    Резервное копирование {STATUS_OK}\n",
         f"    {C.HEADER}Всего карт{C.ENDC}: {maps_count}",
     )
+
+
+def backup_scripts(url: str, login: str, password: str):
+    """
+    Сохраняем все глобальные скрипты Zabbix
+    """
+
+    print()
+    print(
+        C.OKBLUE,
+        "---> Начинаем копировать глобальные скрипты\n",
+        C.ENDC,
+    )
+
+    with ZabbixAPI(server=url) as zbx:
+        zbx.login(user=login, password=password)
+        global_scripts = zbx.script.get(output="extend")
+
+    for scr in global_scripts:
+        del scr["scriptid"]
+
+    with (BASE_DIR / "backup" / "global_scripts.json").open("w") as file:
+        file.write(json.dumps(global_scripts))
+
+    print(
+        f"    Резервное копирование {STATUS_OK}\n",
+        f"    {C.HEADER}Всего скриптов{C.ENDC}: {len(global_scripts)}",
+    )
+
+
+def backup_user_groups(url: str, login: str, password: str):
+    """Копируем все группы пользователей Zabbix"""
+
+    print()
+    print(
+        C.OKBLUE,
+        "---> Начинаем копировать группы пользователей\n",
+        C.ENDC,
+    )
+    with ZabbixAPI(server=url) as zbx:
+        zbx.login(user=login, password=password)
+        # Собираем группы пользователей
+        user_groups = zbx.usergroup.get(output="extend", selectRights="")
+
+        # Словарь групп узлов сети -> ID: NAME
+        # Для того, чтобы сопоставить ID текущей группы узлов сети с именем
+        # Так как для восстановления понадобится только имя
+        host_groups = {
+            hg["groupid"]: hg["name"] for hg in zbx.hostgroup.get(output="extend")
+        }
+
+    # Смотрим полученные группы пользователей
+    for group in user_groups:
+        del group["usrgrpid"]  # Удаляем ID группы пользователя
+
+        # Смотрим права доступа для группы
+        for i, _ in enumerate(group["rights"]):
+            # Преобразуем ID группы узлов сети в её имя, чтобы не было привязки с прежним ID
+            group["rights"][i]["id"] = host_groups[group["rights"][i]["id"]]
+        print(f"    -> {group['name']}")
+
+    with (BASE_DIR / "backup" / "user_groups.json").open("w") as file:
+        file.write(json.dumps(user_groups))
+
+    print(f"\n    Резервное копирование {STATUS_OK}\n")
+
+
+def backup_media_types(url: str, login: str, password: str):
+    """"""
+    print()
+    print(
+        C.OKBLUE,
+        "---> Начинаем копировать способы оповещения\n",
+        C.ENDC,
+    )
+    with ZabbixAPI(server=url) as zbx:
+        zbx.login(user=login, password=password)
+        media_types = zbx.mediatype.get(output="extend", selectMedias="extend")
+
+    with (BASE_DIR / "backup" / "media_types.json").open("w") as file:
+        file.write(json.dumps(media_types))
+
+    print(f"    Резервное копирование {STATUS_OK}\n")
+
+
+def backup_users(url: str, login: str, password: str):
+    """"""
+    print()
+    print(
+        C.OKBLUE,
+        "---> Начинаем копировать пользователей\n",
+        C.ENDC,
+    )
+    with ZabbixAPI(server=url) as zbx:
+        zbx.login(user=login, password=password)
+        media_types = {
+            mt["mediatypeid"]: mt["name"] for mt in zbx.mediatype.get(output=["name"])
+        }
+        users = zbx.user.get(
+            output="extend", selectMedias="extend", selectUsrgrps=["name"]
+        )
+
+    for user in users:
+        print(f"    -> {user['alias']}")
+        user["user_medias"] = user["medias"]
+        del user["medias"]
+        del user["attempt_clock"]
+        del user["attempt_failed"]
+        del user["attempt_ip"]
+        del user["userid"]
+
+        # Проходимся по способам оповещения
+        for mt in user["user_medias"]:
+            del mt["mediaid"]
+            del mt["userid"]
+            # Меняем ID на имя
+            mt["mediatypeid"] = media_types[mt["mediatypeid"]]
+
+    with (BASE_DIR / "backup" / "users.json").open("w") as file:
+        file.write(json.dumps(users))
+
+    print(f"    Резервное копирование {STATUS_OK}\n")
 
 
 ACTION_CHOOSE = {
@@ -297,6 +419,10 @@ ACTION_CHOOSE = {
         4: backup_templates,
         5: backup_hosts,
         6: backup_maps,
+        7: backup_user_groups,
+        8: backup_scripts,
+        9: backup_media_types,
+        10: backup_users,
     },
     "Restore": {
         1: restore_images,
@@ -305,6 +431,10 @@ ACTION_CHOOSE = {
         4: restore_templates,
         5: restore_hosts,
         6: restore_maps,
+        7: restore_user_groups,
+        8: restore_scripts,
+        9: restore_media_types,
+        10: restore_users,
     },
 }
 
@@ -318,20 +448,24 @@ def backup_restore_line(action_type: str):
             f" Выберите, какую резервную копию необходимо",
             f"{'сделать' if action_type == 'Backup' else 'восстановить'}. \n",
             " (несколько пунктов передавать через пробел) -> 1 2 5 \n\n",
-            "  1. Изображения \n",
-            "  2. Глобальные макросы \n",
-            "  3. Группы узлов сети \n",
-            "  4. Шаблоны \n",
-            "  5. Узлы сети \n",
-            "  6. Карты сетей \n",
-            "  7. " + C.HEADER + "Все" + C.ENDC,
+            "  0.  " + C.HEADER + "Все" + C.ENDC + "\n",
+            "  1.  Изображения \n",
+            "  2.  Глобальные макросы \n",
+            "  3.  Группы узлов сети \n",
+            "  4.  Шаблоны \n",
+            "  5.  Узлы сети \n",
+            "  6.  Карты сетей \n",
+            "  7.  Группы пользователей\n",
+            "  8.  Глобальные скрипты (зависит от `3, 7`)\n",
+            "  9.  Способы оповещения \n",
+            "  10. Пользователи \n",
         )
         operation = input(" > ")
         numbers = list(
             map(
                 int,
                 filter(
-                    lambda n: n.isdigit() and 1 <= int(n) <= 7,
+                    lambda n: n.isdigit() and 0 <= int(n) <= 10,
                     set(operation.split()),
                 ),
             )
@@ -342,7 +476,7 @@ def backup_restore_line(action_type: str):
 
     for n, execute_function in ACTION_CHOOSE[action_type].items():
         # Проходимся по действия
-        if n in numbers or 7 in numbers:
+        if n in numbers or 0 in numbers:
             try:
                 # Выполняем требуемую функцию Backup или Restore
                 execute_function(url, login, password)
