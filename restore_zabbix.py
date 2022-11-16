@@ -132,7 +132,7 @@ def restore_host_groups(url, login, password):
                         print(C.FAIL, e, C.ENDC)
 
     print(f"    Восстановление {STATUS_OK}")
-    print(f"    {C.OKGREEN}Было добавлено узлов сети{C.ENDC}: {added_host_groups}")
+    print(f"    {C.OKGREEN}Было добавлено групп узлов сети{C.ENDC}: {added_host_groups}")
     if existed_host_groups:
         print(f"    {C.OKBLUE}Уже существовали{C.ENDC}: {existed_host_groups}")
 
@@ -180,7 +180,7 @@ def restore_templates(url, login, password):
 def restore_hosts(url, login, password):
     input_groups = input(
         "    Укажите названия файлов узлов сети через пробел (без .json),\n"
-        "    которые надо восстановить.\n"
+        "    которые надо восстановить. Ничего не указывайте, если надо все.\n"
         " > "
     )
     from_groups = [slugify(gr) for gr in input_groups.split()]
@@ -325,6 +325,9 @@ def restore_user_groups(url, login, password):
                     group["rights"][i]["id"] = host_groups[group["rights"][i]["id"]]
                 zbx.usergroup.create(**group)
                 print(f"    -> {group['name']}")
+            except api.ZabbixAPIException as e:
+                if e.error["code"] == -32602:  # Уже есть такая группа пользователей
+                    print(f"    -> {group['name']} {C.OKBLUE}exists{C.ENDC}")
             except Exception as e:
                 print(C.FAIL, e, C.ENDC)
 
@@ -435,6 +438,10 @@ def restore_users(url: str, login: str, password: str):
                 print(
                     f"    {user['alias']:{max_length_of_username}} -> passwd: {user_password}"
                 )
+
+            except api.ZabbixAPIException as e:
+                if e.error["code"] == -32602:  # Уже есть такая группа пользователей
+                    print(f"    -> {user['alias']:{max_length_of_username}} {C.OKBLUE}exists{C.ENDC}")
 
             except Exception as e:
                 print(C.FAIL, e, C.ENDC)
