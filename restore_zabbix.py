@@ -41,24 +41,28 @@ STATUS_OK = C.OKGREEN + "завершено" + C.ENDC
 
 def restore_images(url, login, password):
     """
-    It restores images from the backup folder
+    Восстанавливает изображения из резервной папки
 
-    :param url: The URL of the Zabbix server
-    :param login: the login name of the user who will be used to connect to the Zabbix server
-    :param password: The password of the user you are logging in as
+    :param url: URL-адрес Zabbix-сервера
+    :param login: логин пользователя, который будет использоваться для подключения к серверу Zabbix
+    :param password: Пароль пользователя, под которым вы входите
     """
+
     print()
     print(C.OKBLUE, "---> Начинаем восстанавливать изображения", C.ENDC, "\n")
 
+    # Создание подключения к Zabbix API.
     with ZabbixAPI(server=url) as zbx:
         zbx.login(user=login, password=password)
         existed_images = 0
         added_images = 0
 
+        # Поиск всех файлов в папке backup/images, которые заканчиваются на .json
         for image_file in BASE_DIR.glob("backup/images/*.json"):
             with open(image_file.absolute()) as file:
                 try:
                     image_data = json.load(file)
+                    # Создание нового изображения на сервере Zabbix.
                     zbx.image.create(**image_data)
                     added_images += 1
                 except json.JSONDecodeError:
@@ -89,14 +93,18 @@ def restore_global_macros(url, login, password):
     existed_macros = 0
     added_macros = 0
 
+    # Проверяем, существует ли файл macros_file.
     if macros_file.exists():
+        # Открытие файла в режиме чтения.
         with macros_file.open("r") as file:
             data = json.load(file)
 
+        # Создание подключения к Zabbix API.
         with ZabbixAPI(server=url) as zbx:
             zbx.login(user=login, password=password)
 
             for macro in data:
+                # Удаление ключа globalmacroid из словаря.
                 del macro["globalmacroid"]
                 try:
                     zbx.usermacro.createglobal(**macro)
@@ -128,15 +136,19 @@ def restore_host_groups(url, login, password):
     existed_host_groups = 0
     added_host_groups = 0
 
+    # Проверка существования файла.
     if host_groups_file.exists():
         with host_groups_file.open("r") as file:
             host_groups = json.load(file)
 
+        # Создание подключения к Zabbix API.
         with ZabbixAPI(server=url) as zbx:
             zbx.login(user=login, password=password)
 
+            # Итерация по списку host_groups и присвоение значения каждого элемента в списке переменной gr_name.
             for gr_name in host_groups:
                 try:
+                    # Создание группы хостов в Zabbix.
                     zbx.hostgroup.create(name=gr_name)
                     added_host_groups += 1
                 except api.ZabbixAPIException as e:
@@ -181,7 +193,9 @@ def restore_templates(url, login, password):
         with template_file_path.open("r") as t_file:
             template_data = t_file.read()
             try:
+                # Импорт функции zbx.configuration.import из модуля zabbix_api.
                 zbx_import = getattr(zbx.configuration, "import")
+                # Импорт шаблона в Zabbix.
                 zbx_import(format="json", rules=rules, source=template_data)
             except Exception as e:
                 print(C.FAIL, e, C.ENDC)
@@ -221,21 +235,25 @@ def restore_hosts(url, login, password):
         "templateLinkage": {"createMissing": True},
     }
 
+    # Создание подключения к Zabbix API.
     with ZabbixAPI(server=url) as zbx:
         zbx.login(user=login, password=password)
 
         for hosts_file_path in hosts_dir.glob("*.json"):
 
+            # Проверка наличия имени файла в списке from_groups.
             if from_groups and hosts_file_path.name[:-5] not in from_groups:
                 # Пропускаем ненужные файлы
                 continue
 
             print(f"    -> {hosts_file_path.name}")
 
+            # Открытие файла в режиме чтения.
             with hosts_file_path.open("r") as file:
                 hosts_data = file.read()
 
             try:
+                # Импорт функции zbx.configuration.import из модуля zabbix_api.
                 zbx_import = getattr(zbx.configuration, "import")
                 zbx_import(format="json", rules=rules, source=hosts_data)
             except Exception as e:
@@ -248,6 +266,7 @@ def restore_maps(url, login, password):
     print()
     print(C.OKBLUE, "---> Начинаем восстанавливать карты сети", C.ENDC, "\n")
 
+    # Создание пути к файлу maps.json.
     maps_file_path = BASE_DIR / "backup" / "maps.json"
 
     rules = {
@@ -258,13 +277,17 @@ def restore_maps(url, login, password):
         "maps": {"createMissing": True, "updateExisting": True},
     }
 
+    # Открытие файла в режиме чтения.
     with maps_file_path.open("r") as file:
         maps_data = file.read()
 
+    # Создание подключения к Zabbix API.
     with ZabbixAPI(server=url) as zbx:
         zbx.login(user=login, password=password)
         try:
+            # Импорт функции zbx.configuration.import из модуля zabbix_api.
             zbx_import = getattr(zbx.configuration, "import")
+            # Импорт файла json в zabbix.
             zbx_import(format="json", rules=rules, source=maps_data)
         except Exception as e:
             print(C.FAIL, e, C.ENDC)
@@ -324,6 +347,7 @@ def restore_user_groups(url, login, password):
     with user_groups_file_path.open("r") as file:
         user_groups: list = json.load(file)
 
+    # Создание подключения к Zabbix API.
     with ZabbixAPI(server=url) as zbx:
         zbx.login(user=login, password=password)
 
@@ -334,11 +358,13 @@ def restore_user_groups(url, login, password):
             hg["name"]: hg["groupid"] for hg in zbx.hostgroup.get(output="extend")
         }
 
+        # Итерация по списку user_groups и назначение каждой группы переменной group.
         for group in user_groups:
             try:
                 for i, _ in enumerate(group["rights"]):
                     # Меняем имена разрешенных групп узлов сети на их актуальный ID
                     group["rights"][i]["id"] = host_groups[group["rights"][i]["id"]]
+                # Создание группы пользователей в Zabbix.
                 zbx.usergroup.create(**group)
                 print(f"    -> {group['name']}")
             except api.ZabbixAPIException as e:
@@ -406,6 +432,14 @@ def restore_media_types(url: str, login: str, password: str):
 
 
 def generate_password(length: int = 9):
+    """
+    > Генерировать случайный пароль длиной 9
+
+    :param length: длина = 9, defaults to 9
+    :type length: int (optional)
+
+    :return: Случайный пароль в виде: fAq-q1a-L13
+    """
     passwd = ""
     for i in range(length):
         if i and i % 3 == 0:
@@ -435,6 +469,7 @@ def restore_users(url: str, login: str, password: str):
 
     max_length_of_username = max([len(u["alias"]) for u in users])
 
+    # Создание подключения к Zabbix API.
     with ZabbixAPI(server=url) as zbx:
         zbx.login(user=login, password=password)
 
@@ -448,6 +483,7 @@ def restore_users(url: str, login: str, password: str):
         # Смотрим отсортированных по username пользователей
         for user in sorted(users, key=lambda u: u["alias"]):
             try:
+                # Генерация случайного пароля для пользователя.
                 user_password = generate_password()
                 user["passwd"] = user_password
                 # Доступные группы узлов сети
@@ -461,6 +497,7 @@ def restore_users(url: str, login: str, password: str):
                 for mt in user["user_medias"]:
                     mt["mediatypeid"] = media_types[mt["mediatypeid"]]
 
+                # Создание пользователя в Zabbix.
                 zbx.user.create(**user)
 
                 print(

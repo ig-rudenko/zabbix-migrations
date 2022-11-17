@@ -5,6 +5,7 @@ from restore_zabbix import *
 from configparser import ConfigParser
 from requests import ConnectionError as ZabbixConnectionError
 
+# Получение текущего каталога файла.
 BASE_DIR = pathlib.Path(__file__).parent
 
 ACTION_CHOOSE = {
@@ -37,10 +38,11 @@ ACTION_CHOOSE = {
 
 def backup_restore_line(action_type: str):
     """
-    A function that allows you to choose which backup to make or restore.
+    Функция позволяет выбрать, какую резервную копию делать или восстанавливать.
 
-    :param action_type: str - the type of action to be performed (Backup or Restore)
+    :param action_type: str - тип действия, которое необходимо выполнить (Backup or Restore)
     """
+
     url, login, password = get_auth(for_=action_type)  # Backup/Restore
 
     while True:
@@ -75,11 +77,15 @@ def backup_restore_line(action_type: str):
             break
         print(C.FAIL, "Неверный вариант", C.ENDC)
 
+    # Цикл, который выполняет итерацию по словарю `ACTION_CHOOSE[action_type]` и присваивает ключ `n`, а значение
+    # `execute_function`.
     for n, execute_function in ACTION_CHOOSE[action_type].items():
         # Проходимся по действия
+        # Проверяем, ввел ли пользователь «0» или «n» в списке чисел.
         if n in numbers or 0 in numbers:
             try:
                 # Выполняем требуемую функцию Backup или Restore
+                # хранящуюся в переменной `execute_function`.
                 execute_function(url, login, password)
             except ZabbixConnectionError:
                 print(C.FAIL, "Ошибка подключения", C.ENDC)
@@ -87,18 +93,22 @@ def backup_restore_line(action_type: str):
 
 def get_auth(for_: str) -> tuple:
     """
-    It returns a tuple of tree strings - Zabbix URL, username and password
+    Возвращаем URL, логин, пароль
 
-    :param for_: The name of the service you want to get the auth for
+    :param for_: Имя сервиса, для которого вы хотите получить авторизацию
     """
 
+    # Переменная, которая используется для хранения имени раздела в файле конфигурации.
     cfg_section_name: str = f"Zabbix_{for_}"
+    # Создание пути к файлу `auth` в том же каталоге, что и скрипт.
     auth_file: pathlib.Path = BASE_DIR / "auth"
+    # Сокращение для одновременного присвоения одного и того же значения нескольким переменным.
     url = login = password = ""
 
     cfg = ConfigParser()
     cfg.read(auth_file)
 
+    # Существует ли раздел в файле конфигурации.
     if cfg.has_section(cfg_section_name):
         # Смотрим, если ли прошлые данные
         url = (
@@ -119,6 +129,7 @@ def get_auth(for_: str) -> tuple:
 
     while True:
 
+        # Проверяем, не пуста ли какая-либо из переменных.
         if not url or not login or not password:
             # Вводим данные для подключения
             print(f" Укажите данные для подключений к {C.FAIL}Zabbix API{C.ENDC}:")
@@ -130,20 +141,26 @@ def get_auth(for_: str) -> tuple:
                 " Сохранить данные в файле для дальнейшего использования? [Y/n] > "
             )
 
-            # Сохраняем введенные данные пользователя
+            # Проверка того, ввел ли пользователь `y` или `Y`
             if save.lower() == "y":
+                # Проверяем, существует ли раздел в файле конфигурации.
                 if not cfg.has_section(cfg_section_name):
                     # Создаем секцию, если её нет
                     cfg.add_section(cfg_section_name)
 
+                # Установка значения переменной `url` в ключ `url` в разделе `cfg_section_name`
                 cfg.set(cfg_section_name, "url", url)
+                # Установка значения переменной `login` в ключ `login` в секции `cfg_section_name`
                 cfg.set(cfg_section_name, "login", login)
+                # Установка значения переменной `password` в ключ `password` в секции `cfg_section_name`
                 cfg.set(cfg_section_name, "password", password)
                 with auth_file.open("w") as file:
+                    # Записываем конфигурацию в файл.
                     cfg.write(file)
                 break
 
-        else:  # Может прошлые данные? Они есть
+        else:
+            # Может использовать прошлые данные? Они есть
             print(
                 f" Имеются сохраненные данные для подключения:\n{C.HEADER}",
                 f"   Адрес: {url}\n",
@@ -176,6 +193,7 @@ if __name__ == "__main__":
         C.ENDC,
     )
 
+    # Цикл, который будет выполняться до тех пор, пока пользователь не выберет пункт
     while True:
         print(
             " Выберите, какое действие необходимо выполнить: \n",
@@ -185,6 +203,7 @@ if __name__ == "__main__":
             end="",
         )
         operation = input()
+        # Проверка, является ли ввод числом и находится ли он между 1 и 2.
         if operation.isdigit() and 1 <= int(operation) <= 2:
             break
 
