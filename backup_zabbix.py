@@ -1,3 +1,4 @@
+#
 import pathlib
 import json
 import hashlib
@@ -51,6 +52,9 @@ def backup_images(url: str, login: str, password: str):
 
     Все файлы располагаются в папке backup/images/
 
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -146,6 +150,10 @@ def backup_global_macros(url: str, login: str, password: str):
         }
 
     В файле backup/global_macros.json
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -172,6 +180,10 @@ def backup_host_groups(url: str, login: str, password: str):
     Копируем названия групп узлов сети
 
     Сохраняем в виде списка в файле backup/hosts_groups.json
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -195,6 +207,10 @@ def backup_templates(url: str, login: str, password: str):
     Копируем все имеющиеся шаблоны в Zabbix
 
     Сохраняем в файле backup/templates.json
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -227,6 +243,10 @@ def backup_hosts(url: str, login: str, password: str):
     который хранится в папке backup/hosts/
 
     Имя группы представлено в виде слага
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -266,6 +286,14 @@ def backup_hosts(url: str, login: str, password: str):
 
 
 def backup_maps(url: str, login: str, password: str):
+    """
+    Делаем резервное копирование карт сети
+
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
     print()
     print(
         C.OKBLUE,
@@ -302,6 +330,23 @@ def backup_maps(url: str, login: str, password: str):
 def backup_scripts(url: str, login: str, password: str):
     """
     Сохраняем все глобальные скрипты Zabbix
+
+    Пример:
+        {
+            "name": "Ping",
+            "command": "ping -c 3 {HOST.CONN};",
+            "host_access": "2",
+            "usrgrpid": "0",
+            "groupid": "0",
+            "description": "",
+            "confirmation": "",
+            "type": "0",
+            "execute_on": "2",
+        }
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
     """
 
     print()
@@ -328,7 +373,28 @@ def backup_scripts(url: str, login: str, password: str):
 
 
 def backup_user_groups(url: str, login: str, password: str):
-    """Копируем все группы пользователей Zabbix"""
+    """
+    Копируем все группы пользователей Zabbix
+
+    Заменяем для каждого разрешения групп узлов сети "id" на имя, для того,
+    чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
+
+    Пример:
+        {
+            "name": "Имя группы пользователей",
+            "gui_access": "0",
+            "users_status": "0",
+            "debug_mode": "0",
+            "rights": [
+                {"permission": "2", "id": "Имя группы узлов сети"},
+                {"permission": "2", "id": "Имя группы узлов сети"},
+            ],
+        }
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
 
     print()
     print(
@@ -365,7 +431,51 @@ def backup_user_groups(url: str, login: str, password: str):
 
 
 def backup_media_types(url: str, login: str, password: str):
-    """"""
+    """
+    It takes a URL, login and password and backup a Zabbix media types
+
+    Пример:
+        {
+            "mediatypeid": "6",
+            "type": "4",
+            "name": "Имя способа оповещения",
+            "smtp_server": "",
+            "smtp_helo": "",
+            "smtp_email": "",
+            "exec_path": "",
+            "gsm_modem": "",
+            "username": "",
+            "passwd": "",
+            "status": "0",
+            "smtp_port": "25",
+            "smtp_security": "0",
+            "smtp_verify_peer": "0",
+            "smtp_verify_host": "0",
+            "smtp_authentication": "0",
+            "exec_params": "",
+            "maxsessions": "1",
+            "maxattempts": "3",
+            "attempt_interval": "10s",
+            "content_type": "1",
+            "script": " << SCRIPT TEXT >>",
+            "timeout": "30s",
+            "process_tags": "1",
+            "show_event_menu": "1",
+            "event_menu_url": "{EVENT.TAGS.__zbx_ops_issuelink}",
+            "event_menu_name": "Opsgenie: {EVENT.TAGS.__zbx_ops_issuekey}",
+            "description": "Описание способа оповещения",
+            "parameters": [
+                {"name": "zbxurl", "value": "{$ZABBIX.URL}"},
+                {"name": "alert_message", "value": "{ALERT.MESSAGE}"},
+                {"name": "alert_subject", "value": "{ALERT.SUBJECT}"},
+            ],
+        }
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
+
     print()
     print(
         C.OKBLUE,
@@ -383,7 +493,41 @@ def backup_media_types(url: str, login: str, password: str):
 
 
 def backup_users(url: str, login: str, password: str):
-    """"""
+    """
+    Создаем резервную копию пользователей Zabbix
+
+    Заменяем для каждого способа оповещения mediatypeid на имя, для того,
+    чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
+
+    {
+        "alias": "username",
+        "name": "Имя",
+        "surname": "Фамилия",
+        "url": "",
+        "autologin": "1",
+        "autologout": "0",
+        "lang": "ru_RU",
+        "refresh": "30s",
+        "type": "3",
+        "theme": "default",
+        "rows_per_page": "1000",
+        "usrgrps": [{"usrgrpid": "9", "name": "Имя группы узла сети"}],
+        "user_medias": [
+            {
+                "mediatypeid": "Email-script",
+                "sendto": "admin@mail.ru",
+                "active": "0",
+                "severity": "56",
+                "period": "1-7,00:00-24:00",
+            }
+        ],
+    }
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
+
     print()
     print(
         C.OKBLUE,

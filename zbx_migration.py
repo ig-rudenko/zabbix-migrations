@@ -36,6 +36,11 @@ ACTION_CHOOSE = {
 
 
 def backup_restore_line(action_type: str):
+    """
+    A function that allows you to choose which backup to make or restore.
+
+    :param action_type: str - the type of action to be performed (Backup or Restore)
+    """
     url, login, password = get_auth(for_=action_type)  # Backup/Restore
 
     while True:
@@ -81,7 +86,11 @@ def backup_restore_line(action_type: str):
 
 
 def get_auth(for_: str) -> tuple:
-    """Получаем данные авторизации"""
+    """
+    It returns a tuple of tree strings - Zabbix URL, username and password
+
+    :param for_: The name of the service you want to get the auth for
+    """
 
     cfg_section_name: str = f"Zabbix_{for_}"
     auth_file: pathlib.Path = BASE_DIR / "auth"

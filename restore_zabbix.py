@@ -40,6 +40,13 @@ STATUS_OK = C.OKGREEN + "завершено" + C.ENDC
 
 
 def restore_images(url, login, password):
+    """
+    It restores images from the backup folder
+
+    :param url: The URL of the Zabbix server
+    :param login: the login name of the user who will be used to connect to the Zabbix server
+    :param password: The password of the user you are logging in as
+    """
     print()
     print(C.OKBLUE, "---> Начинаем восстанавливать изображения", C.ENDC, "\n")
 
@@ -107,6 +114,13 @@ def restore_global_macros(url, login, password):
 
 
 def restore_host_groups(url, login, password):
+    """
+    This function restores the host groups from the backup file
+
+    :param url: The URL of the Zabbix server
+    :param login: The username to use to connect to the Zabbix server
+    :param password: The password for the Zabbix user
+    """
     print()
     print(C.OKBLUE, "---> Начинаем восстанавливать группы узлов сети", C.ENDC, "\n")
 
@@ -132,7 +146,9 @@ def restore_host_groups(url, login, password):
                         print(C.FAIL, e, C.ENDC)
 
     print(f"    Восстановление {STATUS_OK}")
-    print(f"    {C.OKGREEN}Было добавлено групп узлов сети{C.ENDC}: {added_host_groups}")
+    print(
+        f"    {C.OKGREEN}Было добавлено групп узлов сети{C.ENDC}: {added_host_groups}"
+    )
     if existed_host_groups:
         print(f"    {C.OKBLUE}Уже существовали{C.ENDC}: {existed_host_groups}")
 
@@ -335,7 +351,13 @@ def restore_user_groups(url, login, password):
 
 
 def restore_media_types(url: str, login: str, password: str):
-    """"""
+    """
+    Восстанавливаем способы оповещения
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
 
     print()
     print(
@@ -393,7 +415,13 @@ def generate_password(length: int = 9):
 
 
 def restore_users(url: str, login: str, password: str):
-    """"""
+    """
+    It restores users from a backup file
+
+    :param url: Zabbix URL
+    :param login: Zabbix API login
+    :param password: Zabbix API password
+    """
 
     print()
     print(
@@ -441,7 +469,9 @@ def restore_users(url: str, login: str, password: str):
 
             except api.ZabbixAPIException as e:
                 if e.error["code"] == -32602:  # Уже есть такая группа пользователей
-                    print(f"    -> {user['alias']:{max_length_of_username}} {C.OKBLUE}exists{C.ENDC}")
+                    print(
+                        f"    -> {user['alias']:{max_length_of_username}} {C.OKBLUE}exists{C.ENDC}"
+                    )
 
             except Exception as e:
                 print(C.FAIL, e, C.ENDC)
