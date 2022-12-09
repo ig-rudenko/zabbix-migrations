@@ -15,252 +15,222 @@ BASE_DIR = pathlib.Path(__file__).parent
 STATUS_OK = C.OKGREEN + "завершено" + C.ENDC
 
 
-__all__ = [
-    "backup_images",
-    "backup_global_macros",
-    "backup_host_groups",
-    "backup_templates",
-    "backup_hosts",
-    "backup_maps",
-    "backup_scripts",
-    "backup_user_groups",
-    "backup_media_types",
-    "backup_users",
-]
+class BackupZabbix:
+    def __init__(self, url, login, password):
+        self.zbx = ZabbixAPI(server=url)
+        self.login = login
+        self.password = password
+        self.api_version = self.zbx.api_version()
 
+    def __enter__(self):
+        self.zbx.login(self.login, self.password)
+        return self
 
-def backup_images(url: str, login: str, password: str):
-    """
-    Копируем все имеющиеся изображения в Zabbix
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.zbx.__exit__(exc_type, exc_val, exc_tb)
+        return self
 
-    Сохраняем в виде файлов .json с полями:
-        {
-            "imagetype": "1",
-            "name": "Image_name",
-            "image": "BASE64_IMAGE_STRING"
-        }
+    def images(self):
+        """
+        Копируем все имеющиеся изображения в Zabbix
 
-    Имя каждого файла представляет из себя слаг имени изображения и хэш суммы файла,
-    разделенного символами "_md5".
+        Сохраняем в виде файлов .json с полями:
+            {
+                "imagetype": "1",
+                "name": "Image_name",
+                "image": "BASE64_IMAGE_STRING"
+            }
 
-    Например для встроенного изображения Zabbix "Crypto-router_(24)" имя файла будет:
+        Имя каждого файла представляет из себя слаг имени изображения и хэш суммы файла,
+        разделенного символами "_md5".
 
-    crypto-router-24_md5df68f84de7d40c7559ee530b64460c5d.json
+        Например для встроенного изображения Zabbix "Crypto-router_(24)" имя файла будет:
 
-    Если изображение в Zabbix поменяется, то данный файл будет обновлен, в другом случае
-    изменений не будет
+        crypto-router-24_md5df68f84de7d40c7559ee530b64460c5d.json
 
-    Все файлы располагаются в папке backup/images/
+        Если изображение в Zabbix поменяется, то данный файл будет обновлен, в другом случае
+        изменений не будет
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
+        Все файлы располагаются в папке backup/images/
 
-    print()
-    print(C.OKBLUE, "---> Начинаем копировать изображения", C.ENDC, "\n")
+        """
 
-    (BASE_DIR / "backup" / "images").mkdir(exist_ok=True)
+        print()
+        print(C.OKBLUE, "---> Начинаем копировать изображения", C.ENDC, "\n")
 
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
+        (BASE_DIR / "backup" / "images").mkdir(exist_ok=True)
 
         # Все изображения
-        img_list = zbx.image.get(output="extend", select_image=True)
+        img_list = self.zbx.image.get(output="extend", select_image=True)
 
-    # Существующие изображения
-    existed_files = [p.name for p in BASE_DIR.glob("backup/images/*.json")]
-    existed_images_name = [file.split("_md5")[0] for file in existed_files]
-    new_images_count = 0
-    updated_images_count = 0
+        # Существующие изображения
+        existed_files = [p.name for p in BASE_DIR.glob("backup/images/*.json")]
+        existed_images_name = [file.split("_md5")[0] for file in existed_files]
+        new_images_count = 0
+        updated_images_count = 0
 
-    for img in img_list:
-        del img["imageid"]  # Удаляем id изображения
+        for img in img_list:
+            del img["imageid"]  # Удаляем id изображения
 
-        json_str_image = json.dumps(img)
+            json_str_image = json.dumps(img)
 
-        image_slug = slugify(img["name"])
-        image_file_name = (
-            f"{image_slug}_md5{hashlib.md5(json_str_image.encode()).hexdigest()}.json"
+            image_slug = slugify(img["name"])
+            image_file_name = f"{image_slug}_md5{hashlib.md5(json_str_image.encode()).hexdigest()}.json"
+
+            # Проверка наличия имени файла изображения в списке существующих файлов.
+            if image_file_name in existed_files:
+                # Пропускаем существующее бэкапы изображений
+                continue
+
+            image_status = f"{C.OKGREEN} Добавлено"  # Если изображение новое
+            # Проверка наличия имени изображения в списке существующих изображений.
+            if image_slug in existed_images_name:
+                # Удаляем старые версии
+                old_file = (BASE_DIR / "backup/images").glob(f"{image_slug}_md5*")
+                for f in old_file:
+                    f.unlink()
+                image_status = f"{C.OKBLUE} Изменено "
+
+            with (BASE_DIR / "backup/images" / image_file_name).open("w") as file:
+                # print(image_status, C.OKCYAN, image_file_name, C.ENDC)
+                file.write(json_str_image)
+
+            if "Добавлено" in image_status:
+                new_images_count += 1
+            else:
+                updated_images_count += 1
+
+        print(
+            f"    Резервное копирование изображений {STATUS_OK}\n",
+            f"    {C.OKGREEN}Добавлено{C.ENDC}: {new_images_count}\n",
+            f"    {C.OKBLUE}Обновлено{C.ENDC}: {updated_images_count}\n",
+            f"    {C.HEADER}Всего изображений{C.ENDC}: {len(existed_files) + new_images_count}",
         )
 
-        if image_file_name in existed_files:
-            # Пропускаем существующее бэкапы изображений
-            continue
+    def regexp(self):
+        """
+        В таблице regexp хранится имя и id
+        В таблице expressions хранятся значения regexp
 
-        image_status = f"{C.OKGREEN} Добавлено"  # Если изображение новое
-        if image_slug in existed_images_name:
-            # Удаляем старые версии
-            old_file = (BASE_DIR / "backup/images").glob(f"{image_slug}_md5*")
-            for f in old_file:
-                f.unlink()
-            image_status = f"{C.OKBLUE} Изменено "
+        zabbix=# SELECT * FROM public.expressions;
+         expressionid | regexpid |                                        expression
+        --------------+----------+------------------------------------------------------------------------------------------
+                    1 |        1 | ^(btrfs|ext2|ext3|ext4|reiser|xfs|ffs|ufs|jfs|jfs2|vxfs|hfs|apfs|refs|ntfs|fat32|zfs)$
+                    3 |        3 | ^(Physical memory|Virtual memory|Memory buffers|Cached memory|Swap space)$
+                    5 |        4 | ^(MMCSS|gupdate|SysmonLog|clr_optimization_v2.0.50727_32|clr_optimization_v4.0.30319_32)$
+                    6 |        5 | ^(automatic|automatic delayed)$
+                    7 |        2 | ^Software Loopback Interface
+                    8 |        2 | ^(In)?[Ll]oop[Bb]ack[0-9._]*$
+                    9 |        2 | ^NULL[0-9.]*$
+                   10 |        2 | ^[Ll]o[0-9.]*$
+                   11 |        2 | ^[Ss]ystem$
+                   12 |        2 | ^Nu[0-9.]*$
+        (10 rows)
+        """
+        ...
 
-        with (BASE_DIR / "backup/images" / image_file_name).open("w") as file:
-            # print(image_status, C.OKCYAN, image_file_name, C.ENDC)
-            file.write(json_str_image)
+    def global_macros(self):
+        """
+        Копируем общесистемные макросы Zabbix
 
-        if "Добавлено" in image_status:
-            new_images_count += 1
-        else:
-            updated_images_count += 1
+        Сохраняем в виде списка значений:
+            {
+                "globalmacroid": "2",
+                "macro": "{$SNMP_COMMUNITY}",
+                "value": "public",
+                "description": "",
+                "type": "0"
+            }
 
-    print(
-        f"    Резервное копирование изображений {STATUS_OK}\n",
-        f"    {C.OKGREEN}Добавлено{C.ENDC}: {new_images_count}\n",
-        f"    {C.OKBLUE}Обновлено{C.ENDC}: {updated_images_count}\n",
-        f"    {C.HEADER}Всего изображений{C.ENDC}: {len(existed_files) + new_images_count}",
-    )
+        В файле backup/global_macros.json
+        """
 
+        print()
+        print(C.OKBLUE, "---> Начинаем копировать глобальные макросы", C.ENDC, "\n")
 
-def backup_regexp(url: str, login: str, password: str):
-    """
-    В таблице regexp хранится имя и id
-    В таблице expressions хранятся значения regexp
-
-    zabbix=# SELECT * FROM public.expressions;
-     expressionid | regexpid |                                        expression
-    --------------+----------+------------------------------------------------------------------------------------------
-                1 |        1 | ^(btrfs|ext2|ext3|ext4|reiser|xfs|ffs|ufs|jfs|jfs2|vxfs|hfs|apfs|refs|ntfs|fat32|zfs)$
-                3 |        3 | ^(Physical memory|Virtual memory|Memory buffers|Cached memory|Swap space)$
-                5 |        4 | ^(MMCSS|gupdate|SysmonLog|clr_optimization_v2.0.50727_32|clr_optimization_v4.0.30319_32)$
-                6 |        5 | ^(automatic|automatic delayed)$
-                7 |        2 | ^Software Loopback Interface
-                8 |        2 | ^(In)?[Ll]oop[Bb]ack[0-9._]*$
-                9 |        2 | ^NULL[0-9.]*$
-               10 |        2 | ^[Ll]o[0-9.]*$
-               11 |        2 | ^[Ss]ystem$
-               12 |        2 | ^Nu[0-9.]*$
-    (10 rows)
-    """
-    ...
-
-
-def backup_global_macros(url: str, login: str, password: str):
-    """
-    Копируем общесистемные макросы Zabbix
-
-    Сохраняем в виде списка значений:
-        {
-            "globalmacroid": "2",
-            "macro": "{$SNMP_COMMUNITY}",
-            "value": "public",
-            "description": "",
-            "type": "0"
-        }
-
-    В файле backup/global_macros.json
-
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
-
-    print()
-    print(C.OKBLUE, "---> Начинаем копировать глобальные макросы", C.ENDC, "\n")
-
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
         # Все макросы
-        macros_list = zbx.usermacro.get(output="extend", globalmacro=True)
+        macros_list = self.zbx.usermacro.get(output="extend", globalmacro=True)
 
-    macros_file_path = BASE_DIR / "backup/global_macros.json"
-    with open(macros_file_path, "w") as file:
-        # Записываем в файл
-        json.dump(macros_list, file)
+        macros_file_path = BASE_DIR / "backup/global_macros.json"
+        with open(macros_file_path, "w") as file:
+            # Записываем в файл
+            json.dump(macros_list, file)
 
-    print(
-        f"    Резервное копирование глобальных макросов {STATUS_OK}\n",
-        f"    {C.HEADER}Всего имеется{C.ENDC}: {len(macros_list)}",
-    )
+        print(
+            f"    Резервное копирование глобальных макросов {STATUS_OK}\n",
+            f"    {C.HEADER}Всего имеется{C.ENDC}: {len(macros_list)}",
+        )
 
+    def host_groups(self):
+        """
+        Копируем названия групп узлов сети
 
-def backup_host_groups(url: str, login: str, password: str):
-    """
-    Копируем названия групп узлов сети
+        Сохраняем в виде списка в файле backup/hosts_groups.json
+        """
 
-    Сохраняем в виде списка в файле backup/hosts_groups.json
+        print()
+        print(C.OKBLUE, "---> Начинаем копировать группы узлов сети", C.ENDC, "\n")
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
+        # Получение всех групп хостов из Zabbix и сохранение их в списке.
+        host_groups = [hg["name"] for hg in self.zbx.hostgroup.get(output="extend")]
+        host_groups_file_path = BASE_DIR / "backup/host_groups.json"
+        # Открытие файла в режиме записи.
+        with open(host_groups_file_path, "w") as file:
+            json.dump(host_groups, file)
 
-    print()
-    print(C.OKBLUE, "---> Начинаем копировать группы узлов сети", C.ENDC, "\n")
+        print(
+            f"    Резервное копирование группы узлов сети {STATUS_OK}\n",
+            f"    {C.HEADER}Всего имеется{C.ENDC}: {len(host_groups)}",
+        )
 
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        host_groups = [hg["name"] for hg in zbx.hostgroup.get(output="extend")]
-    host_groups_file_path = BASE_DIR / "backup/host_groups.json"
-    with open(host_groups_file_path, "w") as file:
-        json.dump(host_groups, file)
+    def templates(self):
+        """
+        Копируем все имеющиеся шаблоны в Zabbix
 
-    print(
-        f"    Резервное копирование группы узлов сети {STATUS_OK}\n",
-        f"    {C.HEADER}Всего имеется{C.ENDC}: {len(host_groups)}",
-    )
+        Сохраняем в файле backup/templates.json
+        """
 
+        print()
+        print(C.OKBLUE, "---> Начинаем копировать шаблоны", C.ENDC, "\n")
 
-def backup_templates(url: str, login: str, password: str):
-    """
-    Копируем все имеющиеся шаблоны в Zabbix
+        # Создание пути к файлу templates.json.
+        templates_file_path = BASE_DIR / "backup" / "templates.json"
 
-    Сохраняем в файле backup/templates.json
+        templates = self.zbx.template.get(output=["id", "name"])
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
-
-    print()
-    print(C.OKBLUE, "---> Начинаем копировать шаблоны", C.ENDC, "\n")
-
-    templates_file_path = BASE_DIR / "backup" / "templates.json"
-
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        templates = zbx.template.get(output=["id", "name"])
-
-        export_template_data = zbx.configuration.export(
+        # Экспорт шаблонов в формате JSON.
+        export_template_data = self.zbx.configuration.export(
             format="json", options={"templates": [t["templateid"] for t in templates]}
         )
-    with templates_file_path.open("w") as file:
-        file.write(export_template_data)
+        with templates_file_path.open("w") as file:
+            file.write(export_template_data)
 
-    print(
-        f"    Резервное копирование шаблонов {STATUS_OK}\n",
-        f"    {C.HEADER}Всего имеется{C.ENDC}: "
-        f"{len(json.loads(export_template_data)['zabbix_export']['templates'])}",
-    )
+        print(
+            f"    Резервное копирование шаблонов {STATUS_OK}\n",
+            f"    {C.HEADER}Всего имеется{C.ENDC}: "
+            f"{len(json.loads(export_template_data)['zabbix_export']['templates'])}",
+        )
 
+    def hosts(self):
+        """
+        Сохраняем все узлы сети Zabbix
 
-def backup_hosts(url: str, login: str, password: str):
-    """
-    Сохраняем все узлы сети Zabbix
+        Узлы поделены на группы, каждая из которых представлена в виде своего .json файла,
+        который хранится в папке backup/hosts/
 
-    Узлы поделены на группы, каждая из которых представлена в виде своего .json файла,
-    который хранится в папке backup/hosts/
+        Имя группы представлено в виде слага
+        """
 
-    Имя группы представлено в виде слага
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать узлы сети из всех групп\n",
+            C.ENDC,
+        )
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
+        (BASE_DIR / "backup" / "hosts").mkdir(exist_ok=True)  # Создаем папку
 
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать узлы сети из всех групп\n",
-        C.ENDC,
-    )
-
-    (BASE_DIR / "backup" / "hosts").mkdir(exist_ok=True)  # Создаем папку
-
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        host_groups = zbx.hostgroup.get(output=["id", "name"])
+        host_groups = self.zbx.hostgroup.get(output=["id", "name"])
 
         for group in host_groups:
 
@@ -270,10 +240,10 @@ def backup_hosts(url: str, login: str, password: str):
 
             hosts_ids = [
                 h["hostid"]
-                for h in zbx.host.get(groupids=[group["groupid"]], output="hostid")
+                for h in self.zbx.host.get(groupids=[group["groupid"]], output="hostid")
             ]
 
-            export_hosts_group_data = zbx.configuration.export(
+            export_hosts_group_data = self.zbx.configuration.export(
                 format="json", options={"hosts": hosts_ids}
             )
 
@@ -282,29 +252,21 @@ def backup_hosts(url: str, login: str, password: str):
 
             print(f"    {group['name']} -> {len(hosts_ids)}")
 
-    print(f"\n Резервное копирование узлов сети {STATUS_OK}")
+        print(f"\n Резервное копирование узлов сети {STATUS_OK}")
 
+    def maps(self):
+        """
+        Делаем резервное копирование карт сети
+        """
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать карты сети\n",
+            C.ENDC,
+        )
 
-def backup_maps(url: str, login: str, password: str):
-    """
-    Делаем резервное копирование карт сети
-
-
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать карты сети\n",
-        C.ENDC,
-    )
-
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        maps_id = [m["sysmapid"] for m in zbx.map.get(output=["sysmapid"])]
-        export_maps_data = zbx.configuration.export(
+        maps_id = [m["sysmapid"] for m in self.zbx.map.get(output=["sysmapid"])]
+        export_maps_data = self.zbx.configuration.export(
             format="json", options={"maps": maps_id}
         )
 
@@ -321,245 +283,220 @@ def backup_maps(url: str, login: str, password: str):
         with (BASE_DIR / "backup" / "maps.json").open("w") as file:
             file.write(json.dumps(maps_dict))
 
-    print(
-        f"    Резервное копирование {STATUS_OK}\n",
-        f"    {C.HEADER}Всего карт{C.ENDC}: {maps_count}",
-    )
+        print(
+            f"    Резервное копирование {STATUS_OK}\n",
+            f"    {C.HEADER}Всего карт{C.ENDC}: {maps_count}",
+        )
 
+    def scripts(self):
+        """
+        Сохраняем все глобальные скрипты Zabbix
 
-def backup_scripts(url: str, login: str, password: str):
-    """
-    Сохраняем все глобальные скрипты Zabbix
+        Пример:
+            {
+                "name": "Ping",
+                "command": "ping -c 3 {HOST.CONN};",
+                "host_access": "2",
+                "usrgrpid": "0",
+                "groupid": "0",
+                "description": "",
+                "confirmation": "",
+                "type": "0",
+                "execute_on": "2",
+            }
+        """
 
-    Пример:
-        {
-            "name": "Ping",
-            "command": "ping -c 3 {HOST.CONN};",
-            "host_access": "2",
-            "usrgrpid": "0",
-            "groupid": "0",
-            "description": "",
-            "confirmation": "",
-            "type": "0",
-            "execute_on": "2",
-        }
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать глобальные скрипты\n",
+            C.ENDC,
+        )
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
+        global_scripts = self.zbx.script.get(output="extend")
 
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать глобальные скрипты\n",
-        C.ENDC,
-    )
+        for scr in global_scripts:
+            del scr["scriptid"]
 
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        global_scripts = zbx.script.get(output="extend")
+        with (BASE_DIR / "backup" / "global_scripts.json").open("w") as file:
+            file.write(json.dumps(global_scripts))
 
-    for scr in global_scripts:
-        del scr["scriptid"]
+        print(
+            f"    Резервное копирование {STATUS_OK}\n",
+            f"    {C.HEADER}Всего скриптов{C.ENDC}: {len(global_scripts)}",
+        )
 
-    with (BASE_DIR / "backup" / "global_scripts.json").open("w") as file:
-        file.write(json.dumps(global_scripts))
+    def user_groups(self):
+        """
+        Копируем все группы пользователей Zabbix
 
-    print(
-        f"    Резервное копирование {STATUS_OK}\n",
-        f"    {C.HEADER}Всего скриптов{C.ENDC}: {len(global_scripts)}",
-    )
+        Заменяем для каждого разрешения групп узлов сети "id" на имя, для того,
+        чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
 
+        Пример:
+            {
+                "name": "Имя группы пользователей",
+                "gui_access": "0",
+                "users_status": "0",
+                "debug_mode": "0",
+                "rights": [
+                    {"permission": "2", "id": "Имя группы узлов сети"},
+                    {"permission": "2", "id": "Имя группы узлов сети"},
+                ],
+            }
+        """
 
-def backup_user_groups(url: str, login: str, password: str):
-    """
-    Копируем все группы пользователей Zabbix
-
-    Заменяем для каждого разрешения групп узлов сети "id" на имя, для того,
-    чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
-
-    Пример:
-        {
-            "name": "Имя группы пользователей",
-            "gui_access": "0",
-            "users_status": "0",
-            "debug_mode": "0",
-            "rights": [
-                {"permission": "2", "id": "Имя группы узлов сети"},
-                {"permission": "2", "id": "Имя группы узлов сети"},
-            ],
-        }
-
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
-
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать группы пользователей\n",
-        C.ENDC,
-    )
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать группы пользователей\n",
+            C.ENDC,
+        )
         # Собираем группы пользователей
-        user_groups = zbx.usergroup.get(output="extend", selectRights="")
+        user_groups = self.zbx.usergroup.get(output="extend", selectRights="")
 
         # Словарь групп узлов сети -> ID: NAME
         # Для того, чтобы сопоставить ID текущей группы узлов сети с именем
         # Так как для восстановления понадобится только имя
         host_groups = {
-            hg["groupid"]: hg["name"] for hg in zbx.hostgroup.get(output="extend")
+            hg["groupid"]: hg["name"] for hg in self.zbx.hostgroup.get(output="extend")
         }
 
-    # Смотрим полученные группы пользователей
-    for group in user_groups:
-        del group["usrgrpid"]  # Удаляем ID группы пользователя
+        # Смотрим полученные группы пользователей
+        for group in user_groups:
+            del group["usrgrpid"]  # Удаляем ID группы пользователя
 
-        # Смотрим права доступа для группы
-        for i, _ in enumerate(group["rights"]):
-            # Преобразуем ID группы узлов сети в её имя, чтобы не было привязки с прежним ID
-            group["rights"][i]["id"] = host_groups[group["rights"][i]["id"]]
-        print(f"    -> {group['name']}")
+            # Смотрим права доступа для группы
+            for i, _ in enumerate(group["rights"]):
+                # Преобразуем ID группы узлов сети в её имя, чтобы не было привязки с прежним ID
+                group["rights"][i]["id"] = host_groups[group["rights"][i]["id"]]
+            print(f"    -> {group['name']}")
 
-    with (BASE_DIR / "backup" / "user_groups.json").open("w") as file:
-        file.write(json.dumps(user_groups))
+        with (BASE_DIR / "backup" / "user_groups.json").open("w") as file:
+            file.write(json.dumps(user_groups))
 
-    print(f"\n    Резервное копирование {STATUS_OK}\n")
+        print(f"\n    Резервное копирование {STATUS_OK}\n")
 
+    def media_types(self):
+        """
+        It takes a URL, login and password and backup a Zabbix media types
 
-def backup_media_types(url: str, login: str, password: str):
-    """
-    It takes a URL, login and password and backup a Zabbix media types
+        Пример:
+            {
+                "mediatypeid": "6",
+                "type": "4",
+                "name": "Имя способа оповещения",
+                "smtp_server": "",
+                "smtp_helo": "",
+                "smtp_email": "",
+                "exec_path": "",
+                "gsm_modem": "",
+                "username": "",
+                "passwd": "",
+                "status": "0",
+                "smtp_port": "25",
+                "smtp_security": "0",
+                "smtp_verify_peer": "0",
+                "smtp_verify_host": "0",
+                "smtp_authentication": "0",
+                "exec_params": "",
+                "maxsessions": "1",
+                "maxattempts": "3",
+                "attempt_interval": "10s",
+                "content_type": "1",
+                "script": " << SCRIPT TEXT >>",
+                "timeout": "30s",
+                "process_tags": "1",
+                "show_event_menu": "1",
+                "event_menu_url": "{EVENT.TAGS.__zbx_ops_issuelink}",
+                "event_menu_name": "Opsgenie: {EVENT.TAGS.__zbx_ops_issuekey}",
+                "description": "Описание способа оповещения",
+                "parameters": [
+                    {"name": "zbxurl", "value": "{$ZABBIX.URL}"},
+                    {"name": "alert_message", "value": "{ALERT.MESSAGE}"},
+                    {"name": "alert_subject", "value": "{ALERT.SUBJECT}"},
+                ],
+            }
+        """
 
-    Пример:
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать способы оповещения\n",
+            C.ENDC,
+        )
+
+        media_types = self.zbx.mediatype.get(output="extend", selectMedias="extend")
+
+        with (BASE_DIR / "backup" / "media_types.json").open("w") as file:
+            file.write(json.dumps(media_types))
+
+        print(f"    Резервное копирование {STATUS_OK}\n")
+
+    def users(self):
+        """
+        Создаем резервную копию пользователей Zabbix
+
+        Заменяем для каждого способа оповещения mediatypeid на имя, для того,
+        чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
+
         {
-            "mediatypeid": "6",
-            "type": "4",
-            "name": "Имя способа оповещения",
-            "smtp_server": "",
-            "smtp_helo": "",
-            "smtp_email": "",
-            "exec_path": "",
-            "gsm_modem": "",
-            "username": "",
-            "passwd": "",
-            "status": "0",
-            "smtp_port": "25",
-            "smtp_security": "0",
-            "smtp_verify_peer": "0",
-            "smtp_verify_host": "0",
-            "smtp_authentication": "0",
-            "exec_params": "",
-            "maxsessions": "1",
-            "maxattempts": "3",
-            "attempt_interval": "10s",
-            "content_type": "1",
-            "script": " << SCRIPT TEXT >>",
-            "timeout": "30s",
-            "process_tags": "1",
-            "show_event_menu": "1",
-            "event_menu_url": "{EVENT.TAGS.__zbx_ops_issuelink}",
-            "event_menu_name": "Opsgenie: {EVENT.TAGS.__zbx_ops_issuekey}",
-            "description": "Описание способа оповещения",
-            "parameters": [
-                {"name": "zbxurl", "value": "{$ZABBIX.URL}"},
-                {"name": "alert_message", "value": "{ALERT.MESSAGE}"},
-                {"name": "alert_subject", "value": "{ALERT.SUBJECT}"},
+            "alias": "username",
+            "name": "Имя",
+            "surname": "Фамилия",
+            "url": "",
+            "autologin": "1",
+            "autologout": "0",
+            "lang": "ru_RU",
+            "refresh": "30s",
+            "type": "3",
+            "theme": "default",
+            "rows_per_page": "1000",
+            "usrgrps": [{"usrgrpid": "9", "name": "Имя группы узла сети"}],
+            "user_medias": [
+                {
+                    "mediatypeid": "Email-script",
+                    "sendto": "admin@mail.ru",
+                    "active": "0",
+                    "severity": "56",
+                    "period": "1-7,00:00-24:00",
+                }
             ],
         }
+        """
 
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
+        print()
+        print(
+            C.OKBLUE,
+            "---> Начинаем копировать пользователей\n",
+            C.ENDC,
+        )
 
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать способы оповещения\n",
-        C.ENDC,
-    )
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
-        media_types = zbx.mediatype.get(output="extend", selectMedias="extend")
-
-    with (BASE_DIR / "backup" / "media_types.json").open("w") as file:
-        file.write(json.dumps(media_types))
-
-    print(f"    Резервное копирование {STATUS_OK}\n")
-
-
-def backup_users(url: str, login: str, password: str):
-    """
-    Создаем резервную копию пользователей Zabbix
-
-    Заменяем для каждого способа оповещения mediatypeid на имя, для того,
-    чтобы не было привязки к ID, он имеет смысл только для текущего Zabbix сервера
-
-    {
-        "alias": "username",
-        "name": "Имя",
-        "surname": "Фамилия",
-        "url": "",
-        "autologin": "1",
-        "autologout": "0",
-        "lang": "ru_RU",
-        "refresh": "30s",
-        "type": "3",
-        "theme": "default",
-        "rows_per_page": "1000",
-        "usrgrps": [{"usrgrpid": "9", "name": "Имя группы узла сети"}],
-        "user_medias": [
-            {
-                "mediatypeid": "Email-script",
-                "sendto": "admin@mail.ru",
-                "active": "0",
-                "severity": "56",
-                "period": "1-7,00:00-24:00",
-            }
-        ],
-    }
-
-    :param url: Zabbix URL
-    :param login: Zabbix API login
-    :param password: Zabbix API password
-    """
-
-    print()
-    print(
-        C.OKBLUE,
-        "---> Начинаем копировать пользователей\n",
-        C.ENDC,
-    )
-    with ZabbixAPI(server=url) as zbx:
-        zbx.login(user=login, password=password)
         media_types = {
-            mt["mediatypeid"]: mt["name"] for mt in zbx.mediatype.get(output=["name"])
+            mt["mediatypeid"]: mt["name"]
+            for mt in self.zbx.mediatype.get(output=["name"])
         }
-        users = zbx.user.get(
+        users = self.zbx.user.get(
             output="extend", selectMedias="extend", selectUsrgrps=["name"]
         )
 
-    for user in users:
-        print(f"    -> {user['alias']}")
-        user["user_medias"] = user["medias"]
-        del user["medias"]
-        del user["attempt_clock"]
-        del user["attempt_failed"]
-        del user["attempt_ip"]
-        del user["userid"]
+        for user in users:
+            print(f"    -> {user['alias']}")
+            user["user_medias"] = user["medias"]
+            del user["medias"]
+            del user["attempt_clock"]
+            del user["attempt_failed"]
+            del user["attempt_ip"]
+            del user["userid"]
 
-        # Проходимся по способам оповещения
-        for mt in user["user_medias"]:
-            del mt["mediaid"]
-            del mt["userid"]
-            # Меняем ID на имя
-            mt["mediatypeid"] = media_types[mt["mediatypeid"]]
+            # Проходимся по способам оповещения
+            for mt in user["user_medias"]:
+                del mt["mediaid"]
+                del mt["userid"]
+                # Меняем ID на имя
+                mt["mediatypeid"] = media_types[mt["mediatypeid"]]
 
-    with (BASE_DIR / "backup" / "users.json").open("w") as file:
-        file.write(json.dumps(users))
+        with (BASE_DIR / "backup" / "users.json").open("w") as file:
+            file.write(json.dumps(users))
 
-    print(f"    Резервное копирование {STATUS_OK}\n")
+        print(f"    Резервное копирование {STATUS_OK}\n")

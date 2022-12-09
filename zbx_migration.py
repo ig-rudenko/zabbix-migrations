@@ -1,6 +1,8 @@
 import pathlib
-from backup_zabbix import *
-from restore_zabbix import *
+import sys
+
+from backup_zabbix import BackupZabbix, C
+from restore_zabbix import RestoreZabbix
 
 from configparser import ConfigParser
 from requests import ConnectionError as ZabbixConnectionError
@@ -8,42 +10,28 @@ from requests import ConnectionError as ZabbixConnectionError
 # Получение текущего каталога файла.
 BASE_DIR = pathlib.Path(__file__).parent
 
-ACTION_CHOOSE = {
-    "Backup": {
-        1: backup_images,
-        2: backup_global_macros,
-        3: backup_host_groups,
-        4: backup_templates,
-        5: backup_hosts,
-        6: backup_maps,
-        7: backup_user_groups,
-        8: backup_scripts,
-        9: backup_media_types,
-        10: backup_users,
-    },
-    "Restore": {
-        1: restore_images,
-        2: restore_global_macros,
-        3: restore_host_groups,
-        4: restore_templates,
-        5: restore_hosts,
-        6: restore_maps,
-        7: restore_user_groups,
-        8: restore_scripts,
-        9: restore_media_types,
-        10: restore_users,
-    },
-}
-
 
 def backup_restore_line(action_type: str):
     """
     Функция позволяет выбрать, какую резервную копию делать или восстанавливать.
 
-    :param action_type: str - тип действия, которое необходимо выполнить (Backup or Restore)
+    :param action_type: str - тип действия, которое необходимо выполнить (Backup или Restore)
     """
 
     url, login, password = get_auth(for_=action_type)  # Backup/Restore
+
+    ACTION_CHOOSE = {
+        1: "images",
+        2: "global_macros",
+        3: "host_groups",
+        4: "templates",
+        5: "hosts",
+        6: "maps",
+        7: "user_groups",
+        8: "scripts",
+        9: "media_types",
+        10: "users",
+    }
 
     while True:
         print(
@@ -77,18 +65,27 @@ def backup_restore_line(action_type: str):
             break
         print(C.FAIL, "Неверный вариант", C.ENDC)
 
-    # Цикл, который выполняет итерацию по словарю `ACTION_CHOOSE[action_type]` и присваивает ключ `n`, а значение
-    # `execute_function`.
-    for n, execute_function in ACTION_CHOOSE[action_type].items():
-        # Проходимся по действия
-        # Проверяем, ввел ли пользователь «0» или «n» в списке чисел.
-        if n in numbers or 0 in numbers:
-            try:
-                # Выполняем требуемую функцию Backup или Restore
-                # хранящуюся в переменной `execute_function`.
-                execute_function(url, login, password)
-            except ZabbixConnectionError:
-                print(C.FAIL, "Ошибка подключения", C.ENDC)
+    # Проверка, соответствует ли тип действия строке «Backup».
+    if action_type == "Backup":
+        action_instance = BackupZabbix(url, login, password)
+    elif action_type == "Restore":
+        action_instance = RestoreZabbix(url, login, password)
+    else:
+        print(f"Неверное действие! {action_type}")
+        sys.exit()
+
+    with action_instance as zbx_session:
+        for n, method_name in ACTION_CHOOSE.items():
+            # Проходимся по действия
+            # Проверяем, ввел ли пользователь «0» или «n» в списке чисел.
+            if n in numbers or 0 in numbers:
+                try:
+                    # Выполняем требуемый метод Backup или Restore
+                    getattr(zbx_session, method_name)()
+
+                # Отлов ошибки, возникающей при сбое подключения к Zabbix API.
+                except ZabbixConnectionError:
+                    print(C.FAIL, "Ошибка подключения", C.ENDC)
 
 
 def get_auth(for_: str) -> tuple:
