@@ -26,7 +26,7 @@ STATUS_OK = C.OKGREEN + "завершено" + C.ENDC
 
 class RestoreZabbix:
     def __init__(self, url, login, password):
-        self.zbx = ZabbixAPI(server=url, timeout=3)
+        self.zbx = ZabbixAPI(server=url)
         self.login = login
         self.password = password
         self.api_version = self.zbx.api_version()
