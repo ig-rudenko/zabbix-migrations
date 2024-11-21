@@ -235,7 +235,7 @@ class RestoreZabbix:
         for hosts_file_path in hosts_dir.glob("*.json"):
 
             # Проверка наличия имени файла в списке from_groups.
-            if from_groups and hosts_file_path.name[:-5] not in from_groups:
+            if from_groups and hosts_file_path.name[:-5].lower() not in from_groups:
                 # Пропускаем ненужные файлы
                 continue
 
