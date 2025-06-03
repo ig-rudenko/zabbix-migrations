@@ -71,6 +71,8 @@ class RestoreZabbix:
                         existed_images += 1
                     else:
                         print(C.FAIL, e, C.ENDC)
+                except BaseException as exc:
+                    print(exc)
 
         print(f"    Восстановление {STATUS_OK}")
         print(f"    {C.OKGREEN}Было добавлено картинок{C.ENDC}: {added_images}")

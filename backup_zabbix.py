@@ -3,6 +3,8 @@ import pathlib
 import json
 import hashlib
 
+from requests import RequestException
+
 from restore_zabbix import C
 from slugify import slugify
 from pyzabbix import ZabbixAPI
@@ -196,12 +198,17 @@ class BackupZabbix:
         # Создание пути к файлу templates.json.
         templates_file_path = BASE_DIR / "backup" / "templates.json"
 
-        templates = self.zbx.template.get(output=["id", "name"])
+        try:
+            templates = self.zbx.template.get(output=["id", "name"])
 
-        # Экспорт шаблонов в формате JSON.
-        export_template_data = self.zbx.configuration.export(
-            format="json", options={"templates": [t["templateid"] for t in templates]}
-        )
+            # Экспорт шаблонов в формате JSON.
+            export_template_data = self.zbx.configuration.export(
+                format="json", options={"templates": [t["templateid"] for t in templates]}
+            )
+        except (RequestException, IOError) as exc:
+            print(exc)
+            return
+
         with templates_file_path.open("w") as file:
             file.write(export_template_data)
 
