@@ -183,7 +183,7 @@ wheels = [
 
 [[package]]
 name = "zabbix-migrations"
-version = "0.1.0"
+version = "0.2.4"
 source = { virtual = "." }
 dependencies = [
     { name = "python-slugify" },

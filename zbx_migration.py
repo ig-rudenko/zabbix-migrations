@@ -84,8 +84,19 @@ def backup_restore_line(action_type: str):
                     getattr(zbx_session, method_name)()
 
                 # Отлов ошибки, возникающей при сбое подключения к Zabbix API.
-                except ZabbixConnectionError:
-                    print(C.FAIL, "Ошибка подключения", C.ENDC)
+                except ZabbixConnectionError as exc:
+                    print(
+                        C.FAIL,
+                        f"Ошибка подключения при выполнении {method_name}: {exc}",
+                        C.ENDC,
+                    )
+                except Exception as exc:
+                    print(
+                        C.FAIL,
+                        f"Ошибка при выполнении {action_type}/{method_name}: {exc}",
+                        C.ENDC,
+                    )
+                    raise
 
 
 def get_auth(for_: str) -> tuple:

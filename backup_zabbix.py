@@ -4,6 +4,7 @@ import json
 import hashlib
 
 from requests import RequestException
+from requests.exceptions import ChunkedEncodingError
 
 from restore_zabbix import C
 from slugify import slugify
@@ -30,7 +31,7 @@ class BackupZabbix:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.zbx.__exit__(exc_type, exc_val, exc_tb)
-        return self
+        return False
 
     def images(self):
         """
@@ -62,8 +63,8 @@ class BackupZabbix:
 
         (BASE_DIR / "backup" / "images").mkdir(exist_ok=True)
 
-        # Все изображения
-        img_list = self.zbx.image.get(output="extend", select_image=True)
+        # Список без содержимого изображений: данные загружаем отдельно.
+        img_list = self.zbx.image.get(output=["imageid", "name"])
 
         # Существующие изображения
         existed_files = [p.name for p in BASE_DIR.glob("backup/images/*.json")]
@@ -71,7 +72,25 @@ class BackupZabbix:
         new_images_count = 0
         updated_images_count = 0
 
-        for img in img_list:
+        for img_info in img_list:
+            print(f"    Загружаем изображение: {img_info['name']}", flush=True)
+            for attempt in range(1, 4):
+                try:
+                    img = self.zbx.image.get(
+                        output="extend", select_image=True, imageids=img_info["imageid"]
+                    )[0]
+                    break
+                except ChunkedEncodingError as exc:
+                    print(
+                        C.FAIL,
+                        f"Обрыв HTTP-ответа для изображения {img_info['name']} "
+                        f"(попытка {attempt}/3): {exc}",
+                        C.ENDC,
+                        flush=True,
+                    )
+                    if attempt == 3:
+                        raise
+
             del img["imageid"]  # Удаляем id изображения
 
             json_str_image = json.dumps(img)
@@ -93,7 +112,9 @@ class BackupZabbix:
                     f.unlink()
                 image_status = f"{C.OKBLUE} Изменено "
 
-            with (BASE_DIR / "backup/images" / image_file_name).open("w") as file:
+            with (BASE_DIR / "backup/images" / image_file_name).open(
+                "w", encoding="utf-8"
+            ) as file:
                 # print(image_status, C.OKCYAN, image_file_name, C.ENDC)
                 file.write(json_str_image)
 
@@ -272,13 +293,42 @@ class BackupZabbix:
             C.ENDC,
         )
 
-        maps_id = [m["sysmapid"] for m in self.zbx.map.get(output=["sysmapid"])]
-        export_maps_data = self.zbx.configuration.export(
-            format="json", options={"maps": maps_id}
-        )
+        maps = self.zbx.map.get(output=["sysmapid", "name"])
+        map_batches = [([m["sysmapid"]], m["name"]) for m in maps] or [
+            ([], "пустой список карт")
+        ]
+        maps_dict = None
+        images = {}
+        for maps_id, map_name in map_batches:
+            print(f"    Экспортируем: {map_name}", flush=True)
+            for attempt in range(1, 4):
+                try:
+                    export_maps_data = self.zbx.configuration.export(
+                        format="json", options={"maps": maps_id}
+                    )
+                    break
+                except ChunkedEncodingError as exc:
+                    print(
+                        C.FAIL,
+                        f"Обрыв HTTP-ответа для карты {map_name} "
+                        f"(попытка {attempt}/3): {exc}",
+                        C.ENDC,
+                        flush=True,
+                    )
+                    if attempt == 3:
+                        raise
+
+            map_export = json.loads(export_maps_data)["zabbix_export"]
+            if maps_dict is None:
+                maps_dict = {"zabbix_export": map_export.copy()}
+                maps_dict["zabbix_export"]["maps"] = []
+            maps_dict["zabbix_export"]["maps"].extend(map_export.get("maps", []))
+            images.update({img["name"]: img for img in map_export.get("images", [])})
+
+        if images:
+            maps_dict["zabbix_export"]["images"] = list(images.values())
 
         # Удаляем триггеры для линий связи
-        maps_dict = json.loads(export_maps_data)
         # Смотри все карты
         maps_count = len(maps_dict["zabbix_export"]["maps"])
         for i in range(maps_count):
@@ -287,7 +337,7 @@ class BackupZabbix:
                 # Обнуляем триггер линка
                 maps_dict["zabbix_export"]["maps"][i]["links"][j]["linktriggers"] = []
 
-        with (BASE_DIR / "backup" / "maps.json").open("w") as file:
+        with (BASE_DIR / "backup" / "maps.json").open("w", encoding="utf-8") as file:
             file.write(json.dumps(maps_dict))
 
         print(
